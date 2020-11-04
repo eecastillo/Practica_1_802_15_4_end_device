@@ -27,6 +27,7 @@
 #include "MemManager.h"
 #include "TimersManager.h"
 #include "FunctionLib.h"
+#include "MyNewTask.h"
 
 #if mEnterLowPowerWhenIdle_c
   #include "PWR_Interface.h"
@@ -168,6 +169,8 @@ NVM_RegisterDataSet(&mAddrMode,           1,   sizeof(addrModeType_t), mAddrMode
 
 /* The current state of the applications state machine */
 uint8_t gState;
+
+uint8_t g_counter = 0;
 
 /************************************************************************************
 *************************************************************************************
@@ -351,6 +354,8 @@ void App_init( void )
         }
     }
 #endif
+	MyTask_Init(Air_counter_callback);
+
 }
 
 /*****************************************************************************
@@ -553,6 +558,7 @@ void AppThread(osaTaskParam_t argument)
                             TMR_StartLowPowerTimer(mTimer_c, gTmrSingleShotTimer_c ,mPollInterval, AppPollWaitTimeout, NULL );
                             /* Go to the listen state */
                             gState = stateListen;
+                            MyTaskTimer_Start();
                             OSA_EventSet(mAppEvent, gAppEvtDummyEvent_c); 
                         }        
                         else 
@@ -572,6 +578,7 @@ void AppThread(osaTaskParam_t argument)
                     }
                 }
             }
+           //
             break; 
 
         case stateListen:
@@ -584,10 +591,14 @@ void AppThread(osaTaskParam_t argument)
                     rc = App_HandleMlmeInput(pMsgIn);
                 }
             } 
+            //wait for 3 sec
+
+			//OSA_EventWait(mMyEvents_time, osaEventFlagsAll_c, FALSE, osaWaitForever_c, &customEvent);
 
             if (ev & gAppEvtRxFromUart_c)
             {      
                 /* get byte from UART */
+
                 App_TransmitUartData();
             }
 #if gNvmTestActive_d  
@@ -1162,6 +1173,83 @@ static void    AppPollWaitTimeout(void *pData)
   TMR_StartLowPowerTimer(mTimer_c, gTmrSingleShotTimer_c ,mPollInterval, AppPollWaitTimeout, NULL );
 }
 
+
+
+void Air_counter_callback(void)
+{
+	uint8_t* texto;
+	TurnOffLeds();
+	//mandar magicamente el counter
+	switch(g_counter)
+	{
+	case 0:
+		//prende rojo
+		Led1On();
+		texto = "Counter: 0";
+		break;
+	case 1:
+		// prende verde
+		Led2On();
+		texto = "Counter: 1";
+		break;
+	case 2:
+		// prende azul
+		Led3On();
+		texto = "Counter: 2";
+		break;
+	case 3:
+		// prende todo
+		Led3On();
+		texto = "Counter: 3";
+		break;
+	default:
+		texto = "Counter: X";
+		break;
+	}
+	g_counter = (g_counter+1)%4;
+	send_air_data(texto);
+}
+void send_air_data(uint8_t* texto)
+{
+	if(mpPacket == NULL)
+	    {
+	        /* If the maximum number of pending data buffes is below maximum limit
+	        and we do not have a data buffer already then allocate one. */
+	        mpPacket = MSG_Alloc(sizeof(nwkToMcpsMessage_t) + gMaxPHYPacketSize_c);
+	    }
+	    if(mpPacket != NULL)
+	    {
+		/* Data is available in the SerialManager's receive buffer. Now create an
+		MCPS-Data Request message containing the data. */
+		mpPacket->msgType = gMcpsDataReq_c;
+		mpPacket->msgData.dataReq.pMsdu = texto;
+		/* Create the header using coordinator information gained during
+		the scan procedure. Also use the short address we were assigned
+		by the coordinator during association. */
+		FLib_MemCpy(&mpPacket->msgData.dataReq.dstAddr, &mCoordInfo.coordAddress, 8);
+		FLib_MemCpy(&mpPacket->msgData.dataReq.srcAddr, &maMyAddress, 8);
+		FLib_MemCpy(&mpPacket->msgData.dataReq.dstPanId, &mCoordInfo.coordPanId, 2);
+		FLib_MemCpy(&mpPacket->msgData.dataReq.srcPanId, &mCoordInfo.coordPanId, 2);
+		mpPacket->msgData.dataReq.dstAddrMode = mCoordInfo.coordAddrMode;
+		mpPacket->msgData.dataReq.srcAddrMode = mAddrMode;
+		mpPacket->msgData.dataReq.msduLength = 10;
+		/* Request MAC level acknowledgement of the data packet */
+		mpPacket->msgData.dataReq.txOptions = gMacTxOptionsAck_c;
+		/* Give the data packet a handle. The handle is
+		returned in the MCPS-Data Confirm message. */
+		mpPacket->msgData.dataReq.msduHandle = mMsduHandle++;
+		/* Don't use security */
+		mpPacket->msgData.dataReq.securityLevel = gMacSecurityNone_c;
+
+		/* Send the Data Request to the MCPS */
+		(void)NWK_MCPS_SapHandler(mpPacket, macInstance);
+
+		/* Prepare for another data buffer */
+		mpPacket = NULL;
+		mcPendingPackets++;
+	    }
+}
+
 /*****************************************************************************
 * Handles all key events for this device.
 * Interface assumptions: None
@@ -1172,9 +1260,9 @@ static void App_HandleKeys
   key_event_t events  /*IN: Events from keyboard modul */
   )
 {
-#if gKBD_KeysCount_c > 0 
-    switch ( events ) 
-    { 
+#if gKBD_KeysCount_c > 0
+    switch ( events )
+    {
     case gKBD_EventLongSW1_c:
         OSA_EventSet(mAppEvent, gAppEvtPressedRestoreNvmBut_c);
     case gKBD_EventLongSW2_c:
@@ -1183,19 +1271,37 @@ static void App_HandleKeys
     case gKBD_EventSW1_c:
     case gKBD_EventSW2_c:
     case gKBD_EventSW3_c:
+
     case gKBD_EventSW4_c:
+
 #if gTsiSupported_d
-    case gKBD_EventSW5_c:    
-    case gKBD_EventSW6_c:    
+    case gKBD_EventSW5_c:
+    case gKBD_EventSW6_c:
 #endif
 #if gTsiSupported_d
     case gKBD_EventLongSW5_c:
-    case gKBD_EventLongSW6_c:       
+    case gKBD_EventLongSW6_c:
 #endif
         if(gState == stateInit)
         {
             LED_StopFlashingAllLeds();
             OSA_EventSet(mAppEvent, gAppEvtDummyEvent_c);
+        }
+        else
+        {
+        	switch(events)
+        	{
+            case 2:
+            	g_counter = 2;
+            	send_air_data("Counter: 1");
+            	MyTaskTimer_Start();
+            	break;
+            case 1:
+            	g_counter = 3;
+            	send_air_data("Counter: 2");
+            	MyTaskTimer_Start();
+            	break;
+        	}
         }
     }
 #endif
@@ -1222,3 +1328,5 @@ resultType_t MCPS_NWK_SapHandler (mcpsToNwkMessage_t* pMsg, instanceId_t instanc
   OSA_EventSet(mAppEvent, gAppEvtMessageFromMCPS_c);
   return gSuccess_c;
 }
+
+
