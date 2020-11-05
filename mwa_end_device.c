@@ -1199,7 +1199,8 @@ void Air_counter_callback(void)
 		break;
 	case 3:
 		// prende todo
-		Led3On();
+		//TurnOnLeds();
+		Led4On();
 		texto = "Counter: 3";
 		break;
 	default:
