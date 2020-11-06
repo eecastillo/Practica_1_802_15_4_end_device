@@ -1184,23 +1184,22 @@ void Air_counter_callback(void)
 	{
 	case 0:
 		//prende rojo
-		Led1On();
+		Led2On();
 		texto = "Counter: 0";
 		break;
 	case 1:
-		// prende verde
-		Led2On();
+		// prende verdez
+		Led3On();
 		texto = "Counter: 1";
 		break;
 	case 2:
 		// prende azul
-		Led3On();
+		Led4On();
 		texto = "Counter: 2";
 		break;
 	case 3:
 		// prende todo
-		//TurnOnLeds();
-		Led4On();
+		TurnOnLeds();
 		texto = "Counter: 3";
 		break;
 	default:
